@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MyBlog</title>
+</head>
+<body>
+    <h1>MyBlog</h1>
+    <noscript>请启用 JavaScript 以调用接口。</noscript>
+
+    <h2>个人资料</h2>
+    <button type="button" data-get="/hello">问候</button>
+    <button type="button" data-get="/me">自我介绍</button>
+    <button type="button" data-get="/profile">完整资料</button>
+
+    <h2>留言</h2>
+    <form id="message-create">
+        <p><label>内容<br><textarea name="content" rows="3" cols="50" maxlength="1000" required></textarea></label></p>
+        <button type="submit">创建留言</button>
+    </form>
+
+    <form id="message-search">
+        <p>
+            <label>关键词 <input name="keyword"></label>
+            <label>页码 <input name="page" type="number" min="1" step="1" value="1" required></label>
+            <label>每页条数 <input name="size" type="number" min="1" max="100" step="1" value="5" required></label>
+            <button type="submit">查询留言列表</button>
+        </p>
+    </form>
+
+    <form id="message-detail">
+        <label>留言 ID <input name="id" inputmode="numeric" pattern="[1-9][0-9]*" required></label>
+        <button type="submit">查询单条留言</button>
+    </form>
+
+    <h2>文章</h2>
+    <form id="article-create">
+        <p><label>标题 <input name="title" maxlength="200" required></label></p>
+        <p><label>正文<br><textarea name="content" rows="4" cols="50" required></textarea></label></p>
+        <button type="submit">发布文章</button>
+    </form>
+
+    <form id="article-search">
+        <p>
+            <label>关键词 <input name="keyword"></label>
+            <label>页码 <input name="page" type="number" min="1" step="1" value="1" required></label>
+            <label>每页条数 <input name="size" type="number" min="1" max="100" step="1" value="5" required></label>
+            <button type="submit">查询文章列表</button>
+        </p>
+    </form>
+
+    <form id="article-manage">
+        <p><label>文章 ID <input name="id" inputmode="numeric" pattern="[1-9][0-9]*" required></label></p>
+        <p><label>新标题 <input name="title" maxlength="200"></label></p>
+        <p><label>新正文<br><textarea name="content" rows="4" cols="50"></textarea></label></p>
+        <p>先查询可填入原文；修改时留空的字段保持原值。</p>
+        <button type="submit" name="action" value="read">查询单篇</button>
+        <button type="submit" name="action" value="update">修改文章</button>
+        <button type="submit" name="action" value="delete">删除文章</button>
+    </form>
+
+    <h2>接口结果</h2>
+    <p id="request-status" role="status" aria-live="polite">点击按钮后显示请求状态。</p>
+    <pre id="result"></pre>
+
+    <script>
+        'use strict';
+
+        const status = document.getElementById('request-status');
+        const output = document.getElementById('result');
+
+        async function request(method, path, body) {
+            status.textContent = method + ' ' + path + '：请求中';
+            output.textContent = '';
+            const options = { method };
+            if (body !== undefined) {
+                options.headers = { 'Content-Type': 'application/json' };
+                options.body = JSON.stringify(body);
+            }
+            const response = await fetch(path, options);
+            const text = await response.text();
+            let value = text;
+            try {
+                value = JSON.parse(text);
+            } catch (_) {
+                // /hello 返回纯文本，其他错误正文也原样显示。
+            }
+            status.textContent = method + ' ' + path + ' → HTTP ' + response.status;
+            output.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+            const contractOk = value === null || typeof value !== 'object'
+                || !Object.prototype.hasOwnProperty.call(value, 'code') || value.code === 0;
+            return { ok: response.ok && contractOk, value };
+        }
+
+        async function perform(button, action) {
+            if (button) button.disabled = true;
+            try {
+                await action();
+            } catch (error) {
+                status.textContent = '请求失败：' + error.message;
+                output.textContent = '';
+            } finally {
+                if (button) button.disabled = false;
+            }
+        }
+
+        function bind(id, handler) {
+            const form = document.getElementById(id);
+            form.addEventListener('submit', event => {
+                event.preventDefault();
+                const button = event.submitter;
+                perform(button, () => handler(form, new FormData(form), button?.value));
+            });
+        }
+
+        function searchPath(resource, data) {
+            const query = new URLSearchParams({
+                keyword: data.get('keyword'),
+                page: data.get('page'),
+                size: data.get('size')
+            });
+            return resource + '?' + query.toString();
+        }
+
+        document.querySelectorAll('[data-get]').forEach(button => {
+            button.addEventListener('click', () => perform(button, () => request('GET', button.dataset.get)));
+        });
+
+        bind('message-create', async (form, data) => {
+            const response = await request('POST', '/messages', { content: data.get('content') });
+            if (response.ok) {
+                document.getElementById('message-detail').elements.namedItem('id').value = response.value.id;
+                form.reset();
+            }
+        });
+        bind('message-search', (form, data) => request('GET', searchPath('/messages', data)));
+        bind('message-detail', (form, data) => request('GET', '/messages/' + encodeURIComponent(data.get('id'))));
+
+        bind('article-create', async (form, data) => {
+            const response = await request('POST', '/articles', {
+                title: data.get('title'), content: data.get('content')
+            });
+            if (response.ok) {
+                const article = response.value.data;
+                const manage = document.getElementById('article-manage');
+                manage.elements.namedItem('id').value = article.id;
+                manage.elements.namedItem('title').value = article.title;
+                manage.elements.namedItem('content').value = article.content;
+                form.reset();
+            }
+        });
+        bind('article-search', (form, data) => request('GET', searchPath('/articles', data)));
+        bind('article-manage', async (form, data, action = 'read') => {
+            const path = '/articles/' + encodeURIComponent(data.get('id'));
+            if (action === 'delete') {
+                if (!window.confirm('确认删除文章 ID ' + data.get('id') + '？')) return;
+                const response = await request('DELETE', path);
+                if (response.ok) {
+                    form.elements.namedItem('title').value = '';
+                    form.elements.namedItem('content').value = '';
+                }
+                return;
+            }
+            let response;
+            if (action === 'update') {
+                const body = {};
+                if (data.get('title') !== '') body.title = data.get('title');
+                if (data.get('content') !== '') body.content = data.get('content');
+                if (Object.keys(body).length === 0) throw new Error('请填写新标题或新正文。');
+                response = await request('PUT', path, body);
+            } else {
+                response = await request('GET', path);
+            }
+            if (response.ok) {
+                form.elements.namedItem('title').value = response.value.data.title;
+                form.elements.namedItem('content').value = response.value.data.content;
+            }
+        });
+    </script>
+</body>
+</html>

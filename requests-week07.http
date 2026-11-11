@@ -1,0 +1,49 @@
+@baseUrl = http://localhost:8080
+
+# 使用独立、空白的人工验收库，手动执行 schema.sql 和一次 seed-messages.sql。
+# 前 7 项先执行，再执行第 8 项，避免新留言改变 total=10 的前提。
+# 关键词匹配遵循 MySQL collation；% 和 _ 在应用查询中作为普通字符。
+
+### 矩阵 1：命中 3 条，total=3，每条 content 包含 hello
+GET {{baseUrl}}/messages?keyword=hello
+
+### 矩阵 2：items=[]，total=0
+GET {{baseUrl}}/messages?keyword=dragon
+
+### 矩阵 3：items 长度 5，total=10，page=1，size=5
+GET {{baseUrl}}/messages?page=1&size=5
+
+### 矩阵 4：另外 5 条，与上一页无重叠，total=10
+GET {{baseUrl}}/messages?page=2&size=5
+
+### 矩阵 5：items=[]，total=10，page=99，不跳回第一页
+GET {{baseUrl}}/messages?page=99&size=5
+
+### 矩阵 6：2 条 hello，total=3
+GET {{baseUrl}}/messages?keyword=hello&page=1&size=2
+
+### 矩阵 7：1 条 hello，total=3，过滤条件没有丢失
+GET {{baseUrl}}/messages?keyword=hello&page=2&size=2
+
+### 矩阵 8a：201 + 数据库 id；IDEA HTTP Client 将 ID 存为全局变量
+POST {{baseUrl}}/messages
+Content-Type: application/json
+
+{"content":"week07-create-detail-proof"}
+
+> {%
+    client.test("created message", function () {
+        client.assert(response.status === 201, "Expected HTTP 201");
+        client.assert(response.body.id > 0, "Expected generated ID");
+    });
+    client.global.set("createdMessageId", response.body.id);
+%}
+
+### 矩阵 8b：200，id/content 与 POST 一致；先运行 8a
+GET {{baseUrl}}/messages/{{createdMessageId}}
+
+### Week06：重启前获取，人工记录 id/content/createdAt
+GET {{baseUrl}}/messages/{{createdMessageId}}
+
+### 手动彻底停止并重启应用后再运行，内容应与上一步完全一致
+GET {{baseUrl}}/messages/{{createdMessageId}}

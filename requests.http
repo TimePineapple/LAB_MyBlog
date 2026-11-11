@@ -1,0 +1,102 @@
+@baseUrl = http://localhost:8080
+
+### 文本问候：200
+GET {{baseUrl}}/hello
+
+### 原有个人介绍 JSON：200
+GET {{baseUrl}}/me
+
+### 原有五字段身份 JSON：200
+GET {{baseUrl}}/profile
+
+### 裸 GET 默认第一页、每页5条
+GET {{baseUrl}}/messages
+
+### 创建留言：201 + id/content/createdAt
+POST {{baseUrl}}/messages
+Content-Type: application/json
+
+{"content":"Hello, MyBlog"}
+
+> {% client.global.set("createdMessageId", response.body.id); %}
+
+### 使用刚刚创建的数据库 ID（不是列表下标）
+GET {{baseUrl}}/messages/{{createdMessageId}}
+
+### 不存在的 ID：404
+GET {{baseUrl}}/messages/9223372036854775807
+
+### 非整数 ID：400
+GET {{baseUrl}}/messages/abc
+
+### 非法分页：400
+GET {{baseUrl}}/messages?page=0&size=5
+
+### 超出 size 上限：400
+GET {{baseUrl}}/messages?page=1&size=101
+
+### 非整数分页：400
+GET {{baseUrl}}/messages?page=abc
+
+### 空白留言：400
+POST {{baseUrl}}/messages
+Content-Type: application/json
+
+{"content":"   "}
+
+### 字段名不匹配：最终版因校验返回400，不是早期的200/null
+POST {{baseUrl}}/messages
+Content-Type: application/json
+
+{"text":"wrong field"}
+
+### 无效 JSON：400
+POST {{baseUrl}}/messages
+Content-Type: application/json
+
+{"content": }
+
+### 错误 Content-Type：415
+POST {{baseUrl}}/messages
+Content-Type: text/plain
+
+Hello
+
+### 错误方法：405；GET /messages 本身合法，不能用于制造405
+PUT {{baseUrl}}/messages
+Content-Type: application/json
+
+{}
+
+### 错路径：404，JSON错误体
+GET {{baseUrl}}/no-such-route
+
+### 空标题：400 + code/message/data
+POST {{baseUrl}}/articles
+Content-Type: application/json
+
+{"title":" ","content":"body"}
+
+### 空正文：400
+POST {{baseUrl}}/articles
+Content-Type: application/json
+
+{"title":"title","content":""}
+
+### 不存在的文章：404
+GET {{baseUrl}}/articles/9223372036854775807
+
+### 以下 PUT 针对请求文件 week08 已创建的 ID；无变量时先执行文章发布
+PUT {{baseUrl}}/articles/{{createdArticleId}}
+Content-Type: application/json
+
+{"title":null}
+
+### 空对象更新：400
+PUT {{baseUrl}}/articles/{{createdArticleId}}
+Content-Type: application/json
+
+{}
+
+### 文章分页参数越界：400
+GET {{baseUrl}}/articles?page=1&size=0

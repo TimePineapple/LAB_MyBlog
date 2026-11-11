@@ -1,0 +1,83 @@
+@baseUrl = http://localhost:8080
+
+# response handler 是 IDEA HTTP Client 语法，必须按顺序手动运行。
+# 其他客户端请自行复制 POST 返回的 id，并手动比较两次响应。
+
+### 开工前照片 1：保存 Week07 的完整留言分页响应
+GET {{baseUrl}}/messages?keyword=hello&page=1&size=5
+
+> {% client.global.set("messagesBeforeArticles", JSON.stringify(response.body)); %}
+
+### 开工前照片 2：保存身份响应
+GET {{baseUrl}}/profile
+
+> {% client.global.set("profileBeforeArticles", JSON.stringify(response.body)); %}
+
+### 发布文章：HTTP 200 + code=0，data.id 为真实自增 ID
+POST {{baseUrl}}/articles
+Content-Type: application/json
+
+{"title":"week08-proof-title","content":"week08-proof-body"}
+
+> {%
+    client.test("article published", function () {
+        client.assert(response.status === 200 && response.body.code === 0, "Publish failed");
+        client.assert(response.body.data.id > 0, "Missing generated ID");
+    });
+    client.global.set("createdArticleId", response.body.data.id);
+%}
+
+### 单篇回读
+GET {{baseUrl}}/articles/{{createdArticleId}}
+
+### 标题或正文搜索，分页载荷在 data 下
+GET {{baseUrl}}/articles?keyword=week08-proof&page=1&size=5
+
+### 只修改标题，正文及 createdAt 应保留
+PUT {{baseUrl}}/articles/{{createdArticleId}}
+Content-Type: application/json
+
+{"title":"week08-proof-revised"}
+
+### 修改后回读
+GET {{baseUrl}}/articles/{{createdArticleId}}
+
+### 重复提交同一内容应成功
+PUT {{baseUrl}}/articles/{{createdArticleId}}
+Content-Type: application/json
+
+{"title":"week08-proof-revised"}
+
+### 硬删除本文件刚刚创建的单篇文章：code=0，data=null
+DELETE {{baseUrl}}/articles/{{createdArticleId}}
+
+### 再读同一 ID：真正 HTTP 404，code=404，data=null
+GET {{baseUrl}}/articles/{{createdArticleId}}
+
+### 再删同一 ID：HTTP 404
+DELETE {{baseUrl}}/articles/{{createdArticleId}}
+
+### 收工后照片 1：不得在两次拍照之间修改留言或使用其他客户端播种
+GET {{baseUrl}}/messages?keyword=hello&page=1&size=5
+
+> {%
+    client.test("messages unchanged", function () {
+        const before = client.global.get("messagesBeforeArticles");
+        client.assert(before !== undefined, "Run the before snapshot first");
+        client.assert(JSON.stringify(response.body) === before, "Messages changed");
+    });
+%}
+
+### 收工后照片 2：身份响应应完全相同
+GET {{baseUrl}}/profile
+
+> {%
+    client.test("profile unchanged", function () {
+        const before = client.global.get("profileBeforeArticles");
+        client.assert(before !== undefined, "Run the before snapshot first");
+        client.assert(JSON.stringify(response.body) === before, "Profile changed");
+    });
+%}
+
+### 裸 GET 默认 page=1，size=5
+GET {{baseUrl}}/articles
